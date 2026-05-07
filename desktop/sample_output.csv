@@ -1,0 +1,4 @@
+timestamp,entry_node,exit_node,mobile_local_ip,vpn_provider,protocol,port,server_location,subnet_match,correlation_confidence,entry_method,exit_method,file_hash
+2026-05-07T19:35:22.145+00:00,94.156.30.65,94.156.30.132,192.168.137.45,NordVPN/WireGuard,UDP,51820,"Mumbai, India",True,95,AccessibilityService,PacketCapture,SHA256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+2026-05-07T19:36:15.302+00:00,94.156.30.178,81.17.122.203,192.168.137.45,NordVPN/WireGuard,UDP,51820,"Mumbai, India",False,88,AccessibilityService,PacketCapture,SHA256:b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3
+2026-05-07T19:37:01.089+00:00,94.156.30.201,94.156.30.77,192.168.137.45,NordVPN/WireGuard,UDP,51820,"Mumbai, India",True,95,AccessibilityService,PacketCapture,SHA256:c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.env
+
+# Desktop output
+desktop/vnc_e2e_output/
+desktop/vnc_output/
+desktop/*.log
+
+# Android build artifacts
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+
+# Claude internal state
+.claude/
+
+# Misc
+*.tmp
+Thumbs.db
+.DS_Store

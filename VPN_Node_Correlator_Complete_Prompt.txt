@@ -1,0 +1,294 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    FORENSIC VPN NODE CORRELATOR (VNC) v1.0
+                    Complete System Development Prompt
+═══════════════════════════════════════════════════════════════════════════════
+
+## 📋 PROJECT OVERVIEW
+
+Build a complete forensic desktop application + Android APK system that captures
+and correlates VPN Entry Nodes (from mobile screen) and Exit Nodes (from desktop
+packet capture) in real-time, exporting paired data to CSV/Excel for law
+enforcement forensic analysis.
+
+## 🏗️ SYSTEM ARCHITECTURE (2-COMPONENT)
+
+COMPONENT 1: WINDOWS DESKTOP APPLICATION (Primary)
+├── Real-time packet capture on hotspot NIC
+├── Generic VPN traffic detection (all India VPN providers)
+├── Entry-Exit node pairing engine (time-window correlation)
+├── TCP server for mobile communication
+├── Forensic CSV/Excel export with SHA-256 integrity hashing
+└── PyQt6 live monitoring dashboard
+
+COMPONENT 2: ANDROID APK (Forensic Companion)
+├── AccessibilityService for UI automation
+├── Reads VPN IP from NordVPN/any VPN app screen
+├── Auto-triggers reconnect on desktop command
+├── Sends Entry Node IP to desktop via TCP socket
+└── Fallback ADB bridge mode
+
+## 🔗 NETWORK TOPOLOGY
+
+[Internet] ←→ [Desktop Ethernet/WiFi] ←→ [Desktop Hotspot] ←→ [Mobile] ←→ [VPN Tunnel] ←→ [Internet]
+
+Capture Point: Desktop hotspot adapter
+- Mobile Local IP: 192.168.137.x (hotspot DHCP)
+- VPN Traffic: Mobile → VPN Server IP (visible on desktop as destination IP)
+
+## 📊 FORENSIC DATA INSIGHTS (From Real Dataset)
+
+Analysis of 32 valid Entry-Exit pairs reveals:
+- 78.1% pairs are in SAME /24 subnet (e.g., 94.156.30.x ↔ 94.156.30.y)
+- 21.9% pairs are CROSS-subnet (e.g., 94.156.30.x ↔ 81.17.122.y)
+- Known VPN clusters: 94.156.30.0/24, 81.17.122.0/24, 87.17.122.0/24
+- Average last-octet difference in same subnet: ~65
+- This means: Entry and Exit are usually same datacenter but different server IP
+
+## 🔧 TECHNICAL REQUIREMENTS
+
+### DESKTOP APP (Windows 10/11, Python 3.11+)
+
+Required Libraries:
+- scapy >= 2.5.0        (Packet capture & analysis)
+- PyQt6 >= 6.5.0        (GUI dashboard)
+- pandas >= 2.0.0       (CSV/Excel export)
+- cryptography >= 41.0  (SHA-256 hashing)
+- npcap (system install) (Windows packet driver)
+
+Core Modules to Build:
+
+1. capture_engine.py
+   - Sniff packets on hotspot NIC using Scapy
+   - Filter: Source IP = mobile_local_ip
+   - Capture: Destination IP, Port, Protocol, Packet Size, Timestamp
+   - Buffer: Keep last 10 seconds of packets in memory for correlation
+
+2. vpn_detector.py
+   - Generic detection (NOT just NordVPN):
+     VPN_PORTS = [1194, 443, 51820, 4500, 1701, 500]
+     VPN_PROTOCOLS = ['UDP', 'TCP']
+   - Known ranges database (auto-updating):
+     KNOWN_VPN_RANGES = ['94.156.30.0/24', '81.17.122.0/24', '87.17.122.0/24']
+   - Heuristic: High-entropy payload (>100 bytes UDP to unknown port) = likely VPN
+
+3. pairing_engine.py
+   - Receives from mobile: {"event":"VPN_RECONNECT", "entry_node":"94.156.30.x", "timestamp":"ISO8601"}
+   - Searches capture buffer within ±3 seconds window
+   - Finds best match: Destination IP with VPN indicators
+   - Correlation confidence score: 0-100%
+   - Handles cross-subnet pairs using time-only correlation
+
+4. mobile_bridge.py
+   - TCP server on port 5000
+   - Receives JSON from mobile APK
+   - Sends commands to mobile: {"command":"TRIGGER_RECONNECT", "delay_ms":500}
+   - Heartbeat: Ping mobile every 5 seconds
+
+5. csv_exporter.py
+   - Real-time append to CSV
+   - Schema:
+     timestamp,entry_node,exit_node,mobile_local_ip,vpn_provider,
+     protocol,port,server_location,subnet_match,correlation_confidence,
+     entry_method,exit_method,file_hash
+   - SHA-256 per row for integrity
+   - Auto-export to Excel (.xlsx) on session end
+   - Read-only CSV backup maintained
+
+6. gui_dashboard.py
+   - Live packet count
+   - Current session duration
+   - Last captured pair (Entry ↔ Exit)
+   - Correlation confidence meter
+   - Start/Stop/Calibrate buttons
+   - Mobile connection status (green/red indicator)
+
+### ANDROID APK (Kotlin/Java, API 26+)
+
+Required Permissions:
+- android.permission.INTERNET
+- android.permission.ACCESS_NETWORK_STATE
+- android.permission.BIND_ACCESSIBILITY_SERVICE
+- android.permission.FOREGROUND_SERVICE
+- android.permission.SYSTEM_ALERT_WINDOW (optional overlay)
+
+Core Components:
+
+1. ForensicAccessibilityService.kt
+   - Extends AccessibilityService
+   - Background service, persistent notification
+   - On receive command from desktop:
+     a) Launch VPN app (NordVPN or any)
+     b) Find "Reconnect" / "Switch Location" / "Refresh" button
+     c) Perform ACTION_CLICK
+     d) Wait 2-3 seconds for connection
+     e) Traverse AccessibilityNode tree to find IP text
+     f) Extract IP pattern: \b(?:\d{1,3}\.){3}\d{1,3}\b
+     g) Send to desktop: {"event":"VPN_RECONNECT","entry_node":"X.X.X.X","timestamp":"...","server_id":"...","location":"..."}
+
+2. TcpClientService.kt
+   - Maintains persistent TCP connection to desktop (port 5000)
+   - Auto-reconnect on disconnect
+   - Sends JSON payloads
+   - Receives commands
+
+3. ADB Fallback Mode
+   - If AccessibilityService fails, listen for ADB commands
+   - Desktop can send: adb shell am start -n com.nordvpn.android/.MainActivity
+   - Desktop can send: adb shell input tap X Y
+   - Desktop parses: adb shell uiautomator dump
+
+4. IP Extractor
+   - Primary: AccessibilityNodeInfo.getText() from VPN app UI
+   - Secondary: Screenshot + OCR (ML Kit or Tesseract) if text not accessible
+   - Pattern matching to validate IPv4 format
+
+## 📡 COMMUNICATION PROTOCOL (Mobile ↔ Desktop)
+
+Mobile → Desktop (JSON over TCP):
+{
+  "event": "VPN_RECONNECT",
+  "timestamp": "2026-05-07T19:35:22.145Z",
+  "entry_node": "94.156.30.178",
+  "server_id": "India #173",
+  "location": "Mumbai, India",
+  "mobile_local_ip": "192.168.137.45",
+  "protocol": "NordLynx",
+  "confidence": 100
+}
+
+Desktop → Mobile (JSON over TCP):
+{
+  "command": "TRIGGER_RECONNECT",
+  "delay_ms": 500,
+  "target_location": "India"
+}
+
+Desktop → Mobile (Heartbeat):
+{
+  "command": "PING",
+  "timestamp": "2026-05-07T19:35:20.000Z"
+}
+
+## 🎯 CORRELATION ALGORITHM (Critical Logic)
+
+function correlateEntryExit(entryNode, entryTime):
+    windowStart = entryTime - 3 seconds
+    windowEnd = entryTime + 3 seconds
+
+    candidates = captureBuffer.filter(packet ->
+        packet.timestamp >= windowStart &&
+        packet.timestamp <= windowEnd &&
+        packet.sourceIP == mobileLocalIP &&
+        (packet.destPort in VPN_PORTS || packet.destIP in KNOWN_VPN_RANGES)
+    )
+
+    if candidates.empty:
+        return NULL, confidence=0%
+
+    // Priority 1: Same subnet match
+    sameSubnet = candidates.filter(p -> isSameSubnet(p.destIP, entryNode))
+    if sameSubnet.notEmpty:
+        bestMatch = sameSubnet.minBy(p -> abs(p.timestamp - entryTime))
+        return bestMatch.destIP, confidence=95%
+
+    // Priority 2: Known VPN range match
+    knownRange = candidates.filter(p -> p.destIP in KNOWN_VPN_RANGES)
+    if knownRange.notEmpty:
+        bestMatch = knownRange.minBy(p -> abs(p.timestamp - entryTime))
+        return bestMatch.destIP, confidence=85%
+
+    // Priority 3: Any high-entropy UDP traffic
+    bestMatch = candidates.minBy(p -> abs(p.timestamp - entryTime))
+    return bestMatch.destIP, confidence=70%
+
+## 📁 FORENSIC OUTPUT FORMAT
+
+CSV Columns:
+1. timestamp          → ISO 8601 with milliseconds
+2. entry_node         → IP from mobile VPN app
+3. exit_node          → IP from desktop packet capture
+4. mobile_local_ip    → 192.168.137.x
+5. vpn_provider       → Detected provider name or "Unknown"
+6. protocol           → UDP/TCP
+7. port               → Destination port number
+8. server_location    → GeoIP lookup result
+9. subnet_match       → TRUE if same /24 subnet
+10. correlation_confidence → 0-100%
+11. entry_method      → "AccessibilityService" or "ADB" or "OCR"
+12. exit_method       → "PacketCapture"
+13. file_hash         → SHA-256 of row data
+
+Example Row:
+2026-05-07T19:35:22.145,94.156.30.65,94.156.30.132,192.168.137.45,NordVPN,UDP,51820,Mumbai,TRUE,95%,AccessibilityService,PacketCapture,SHA256:a1b2...
+
+## 🛡️ FORENSIC INTEGRITY REQUIREMENTS
+
+1. NTP Sync: Both desktop and mobile MUST sync to pool.ntp.org before session
+2. Immutable CSV: Original CSV is never modified after write. Excel is derived copy.
+3. Row Hashing: Each row gets SHA-256 hash of: timestamp+entry+exit+mobile_ip
+4. Session Logging: Separate .log file with all events, errors, reconnects
+5. Optional Pcap: Raw .pcap file saved for Wireshark verification
+6. Timestamp Precision: Millisecond-level accuracy required
+
+## ⚠️ CONSTRAINTS & ASSUMPTIONS
+
+- Single mobile device monitored at a time
+- Desktop has Windows 10/11 with admin privileges
+- Npcap installed with WinPcap API compatibility
+- Mobile connected via desktop WiFi hotspot
+- VPN app (NordVPN/Express/Proton) installed and logged in on mobile
+- USB debugging enabled (for ADB fallback)
+- AccessibilityService manually enabled by user (Android requirement)
+
+## 🎨 GUI REQUIREMENTS (Desktop)
+
+Layout:
+┌─────────────────────────────────────────┐
+│  VPN NODE CORRELATOR v1.0    [Status]   │
+├─────────────────────────────────────────┤
+│  Session: 00:15:32   Packets: 1,245      │
+├─────────────────────────────────────────┤
+│  Mobile Status: 🟢 Connected (192.168...)│
+│  Last Pair: 94.156.30.65 ↔ 94.156.30.132│
+│  Confidence: 95%  Subnet: MATCH          │
+├─────────────────────────────────────────┤
+│  [START SESSION] [STOP] [CALIBRATE]     │
+│  [EXPORT CSV]    [VIEW LOGS]            │
+├─────────────────────────────────────────┤
+│  Live Table (last 10 pairs):             │
+│  Time      Entry        Exit        Conf │
+│  19:35:22  94.156.30.65 94.156.30.132 95│
+│  19:36:15  94.156.30.178 81.17.122.203 88│
+└─────────────────────────────────────────┘
+
+## 📦 DELIVERABLES
+
+1. Desktop Application:
+   - Complete Python project with requirements.txt
+   - setup.py or install script
+   - User manual (PDF/Markdown)
+   - Sample output CSV
+
+2. Android APK:
+   - Complete Android Studio project (Kotlin preferred)
+   - APK release build
+   - Setup instructions for AccessibilityService
+
+3. Documentation:
+   - Architecture diagram
+   - Setup guide
+   - Forensic procedures guide
+   - Troubleshooting FAQ
+
+## ✅ ACCEPTANCE CRITERIA
+
+- Desktop captures VPN packets from hotspot NIC reliably
+- Mobile APK successfully reads VPN IP from app UI
+- Reconnect command triggers actual VPN reconnect
+- Entry-Exit pairs appear in CSV within 5 seconds of reconnect
+- Correlation confidence >= 85% for same-subnet pairs
+- CSV file opens correctly in Excel
+- SHA-256 hashes verify correctly
+- System runs stable for 1-hour continuous session
+
+═══════════════════════════════════════════════════════════════════════════════
