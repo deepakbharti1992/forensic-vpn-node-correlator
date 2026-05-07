@@ -1,0 +1,185 @@
+================================================================
+  FORENSIC VPN NODE CORRELATOR (VNC) v1.0
+  PROJECT SUMMARY — Requirements & Implementation
+  Date: 08 May 2026
+  Developer: Deepak Bharti
+================================================================
+
+----------------------------------------------------------------
+  MERI REQUIREMENT (USER REQUIREMENTS)
+----------------------------------------------------------------
+
+1. EK AISA TOOL CHAHIYE THA JO:
+   - Android phone pe jo VPN (NordVPN) chal raha hai uska
+     server IP automatically capture kare
+   - Jab bhi VPN reconnect ho to naya IP record ho jaye
+   - Desktop pe packet capture karke VPN traffic dekhe
+   - Entry node (phone se dikha IP) aur Exit node
+     (actual captured packet ka IP) ko correlate kare
+   - Sabhi data forensic evidence ke liye CSV aur Excel
+     mein save ho
+
+2. ANDROID APP CHAHIYE THI JO:
+   - Background mein chal sake (foreground service)
+   - NordVPN ke UI se IP automatically padh sake
+   - Desktop se TCP connection maintain kare
+   - Jab desktop bole tab VPN reconnect kare
+
+3. DESKTOP APP CHAHIYE THA JO:
+   - Live packet capture kare hotspot NIC pe
+   - Phone se data receive kare TCP ke zariye
+   - VPN entry aur exit nodes ko match kare
+   - SHA-256 hash ke saath tamper-proof CSV banaye
+   - Excel export bhi kare
+
+4. END-TO-END AUTOMATION CHAHIYE THI:
+   - ADB se phone control ho sake
+   - NordVPN automatically disconnect/reconnect ho
+   - Naya IP automatically record ho
+   - Lagatar (continuous) monitoring ho sake
+
+5. GITHUB PE CODE SAVE HO:
+   - Public repository
+   - README, License, Description, Topics sab ho
+
+----------------------------------------------------------------
+  HAMNE KYA KIYA (IMPLEMENTATION)
+----------------------------------------------------------------
+
+PHASE 1 — DESKTOP PYTHON APPLICATION
+--------------------------------------
+Banaye gaye files:
+  - capture_engine.py   : Scapy AsyncSniffer se real-time
+                          packet capture, 12-second rolling
+                          buffer, phone IP filter
+  - vpn_detector.py     : VPN traffic pehchanne ke liye
+                          port heuristics (WireGuard:51820,
+                          OpenVPN:1194, etc.), known NordVPN
+                          IP ranges
+  - pairing_engine.py   : Entry node + Exit node correlation
+                          algorithm (3-tier priority, ±3s
+                          time window, /24 subnet matching)
+  - mobile_bridge.py    : TCP server port 5000, JSON
+                          framing, PING/PONG heartbeat
+  - csv_exporter.py     : SHA-256 row hashing, append-only
+                          CSV, Excel export (openpyxl)
+  - gui_dashboard.py    : PyQt6 live dashboard, confidence
+                          bar, mobile connection status
+  - main.py             : Application entry point
+  - demo_runner.py      : Demo mode with sample data
+
+PHASE 2 — ANDROID APK (KOTLIN)
+---------------------------------
+Banaye gaye files:
+  - TcpClientService.kt           : Persistent TCP client,
+                                    auto-reconnect, PING/PONG
+                                    response, send queue
+  - ForensicAccessibilityService.kt: NordVPN UI se IP padhna,
+                                    reconnect button tap karna
+  - IpExtractor.kt                : Accessibility tree se
+                                    public IPv4 extract karna
+  - MainActivity.kt               : App UI, service controls
+  - AndroidManifest.xml           : Permissions, services
+
+APK build: VNCForensic-debug.apk (3.03 MB)
+Phone pe install: Samsung Galaxy Note 20 Ultra
+
+PHASE 3 — SETUP & CONFIGURATION
+----------------------------------
+  - Android SDK download (platform-tools, build-tools)
+  - Npcap install (Windows packet capture ke liye)
+  - Windows Hotspot configure (192.168.137.1)
+  - Phone ko hotspot se connect (192.168.137.184)
+  - ADB USB debugging enable
+  - AccessibilityService enable via ADB
+  - Windows Firewall rule add (port 5000)
+  - ADB reverse tunnel setup (USB se VPN bypass)
+
+PHASE 4 — TESTING
+-------------------
+  test_connection.py : 14/14 TCP bridge tests PASS
+                       PING/PONG verified via ADB logcat
+
+  test_e2e.py        : Full end-to-end test
+                       - Real packet capture
+                       - NordVPN reconnect via ADB
+                       - IP correlation
+                       Result: PASS (95% confidence)
+
+PHASE 5 — CONTINUOUS MONITORING
+----------------------------------
+  continuous_monitor.py:
+    - Sabhi purane session CSV merge karke ek
+      master file banata hai
+    - Har 60 seconds mein NordVPN force-stop → relaunch
+    - Naya IP automatically capture
+    - vnc_master_log.csv mein append karta rahta hai
+    - Ctrl+C se band karo
+
+PHASE 6 — GITHUB
+------------------
+  Repository: github.com/deepakbharti1992/forensic-vpn-node-correlator
+  Visibility : Public
+  License    : All Rights Reserved (c) 2026 Deepak Bharti
+  README     : Architecture, setup, results documented
+  Topics     : vpn, forensics, packet-capture, android,
+               python, nordvpn, network-forensics
+
+----------------------------------------------------------------
+  RESULTS (LIVE TEST)
+----------------------------------------------------------------
+
+Captured Pairs (from real NordVPN reconnects):
+
+  #  | Time (UTC)          | Entry Node      | Exit Node       | Conf
+  ---+---------------------+-----------------+-----------------+-----
+  1  | 2026-05-07 18:04:57 | 81.17.122.220   | 81.17.122.210   | 95%
+  2  | 2026-05-07 18:53:16 | 94.156.30.244   | 94.156.30.237   | 95%
+  3  | 2026-05-07 18:59:12 | 94.156.30.59    | 94.156.30.55    | 95%
+  4  | 2026-05-07 19:01:29 | 81.17.122.229   | 81.17.122.210   | 95%
+  5  | 2026-05-07 19:01:56 | 94.156.30.117   | 94.156.30.106   | 95%
+
+  Protocol  : UDP:51820 (NordLynx / WireGuard)
+  Provider  : NordVPN
+  Location  : India (Mumbai)
+  Subnet    : YES — same /24 datacenter confirmed
+
+----------------------------------------------------------------
+  OUTPUT FILES
+----------------------------------------------------------------
+
+  D:\VPN 02\desktop\vnc_master_log.csv     <- Master log (sabhi pairs)
+  D:\VPN 02\desktop\vnc_e2e_output\        <- Per-session CSV + Excel
+  D:\VPN 02\VNCForensic-debug.apk          <- Android APK (ready to install)
+  D:\VPN 02\android\                       <- Android source code
+  D:\VPN 02\desktop\                       <- Python source code
+
+----------------------------------------------------------------
+  IMPORTANT BUGS FIXED DURING DEVELOPMENT
+----------------------------------------------------------------
+
+1. Android threading deadlock:
+   TcpClientService mein single executor se PONG kabhi
+   nahi ja raha tha. Fix: alag LinkedBlockingQueue +
+   dedicated send thread banaya.
+
+2. ADB reverse tunnel:
+   NordVPN ka VPN sab traffic route karta tha, isliye
+   192.168.137.1:5000 connect nahi hota tha.
+   Fix: adb reverse tcp:5000 tcp:5000 (USB tunnel).
+
+3. Timing window miss:
+   30s polling ke baad event inject karne pe 12s buffer
+   expire ho jata tha.
+   Fix: force-stop ke saath reconnect_time turant set.
+
+4. NordVPN UI tap intercept:
+   Jetpack Compose map view sab taps intercept karta tha.
+   Fix: force-stop → relaunch approach.
+
+5. Windows Firewall:
+   Port 5000 block tha. Fix: netsh firewall rule add kiya.
+
+================================================================
+  END OF SUMMARY
+================================================================
