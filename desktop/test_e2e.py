@@ -186,9 +186,13 @@ else:
         reconnect_time = datetime.now(tz=timezone.utc)
         print(f"  Connect tapped at {reconnect_time.strftime('%H:%M:%S.%f')[:-3]}")
     else:
-        print("  [WARN] Neither Disconnect nor Connect found in NordVPN UI")
-        print("         Please manually disconnect and reconnect NordVPN on the phone now")
+        print("  [WARN] Neither Disconnect nor Connect found — using force-stop to reconnect")
+        adb("shell", f"am force-stop {NORDVPN_PKG}")
+        print("  NordVPN force-stopped (VPN disconnected)")
+        time.sleep(2)
+        adb("shell", f"monkey -p {NORDVPN_PKG} -c android.intent.category.LAUNCHER 1")
         reconnect_time = datetime.now(tz=timezone.utc)
+        print(f"  NordVPN relaunched — reconnect_time={reconnect_time.strftime('%H:%M:%S.%f')[:-3]}")
 
 # ─────────────────────────── STEP 6: wait for VPN to reconnect, read new IP
 
