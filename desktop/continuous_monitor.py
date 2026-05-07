@@ -1,7 +1,9 @@
 """
 Continuous VPN IP monitor:
 - Merges all existing session CSVs into one master file
-- Every 60s: force-stops NordVPN → relaunches → captures new IP → appends to master CSV
+- Every 60s: force-stops active VPN → relaunches → captures new IP → appends to master CSV
+- Supports: NordVPN, ExpressVPN, ProtonVPN, PIA, Surfshark, Windscribe,
+            IPVanish, Hotspot Shield, TunnelBear, CyberGhost, Mullvad, OpenVPN
 """
 from __future__ import annotations
 
@@ -13,7 +15,6 @@ import subprocess
 import sys
 import threading
 import time
-import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,13 +25,13 @@ from vpn_detector import VpnDetector
 from pairing_engine import PairingEngine, CorrelatedPair
 from mobile_bridge import MobileBridge
 from csv_exporter import CsvExporter
+from vpn_apps import detect_active_vpn, SUPPORTED_VPNS
 
 ADB         = r"C:\AndroidSDK\platform-tools\adb.exe"
 HOTSPOT_NIC = "Local Area Connection* 4"
 PHONE_IP    = "192.168.137.184"
-PORT        = 5000
-NORDVPN_PKG = "com.nordvpn.android"
-IP_RE       = re.compile(r"\b((?:\d{1,3}\.){3}\d{1,3})\b")
+PORT    = 5000
+IP_RE   = re.compile(r"\b((?:\d{1,3}\.){3}\d{1,3})\b")
 MASTER_CSV  = Path(__file__).parent / "vnc_master_log.csv"
 INTERVAL    = 60   # seconds between reconnects
 
@@ -147,7 +148,21 @@ print(f"  Interval : {INTERVAL}s per reconnect")
 print(f"  Master   : {MASTER_CSV}")
 print("\nPress Ctrl+C to stop.\n")
 
-# ── Step 3: reconnect loop ───────────────────────────────────────────────────
+# ── Step 3: detect active VPN app ───────────────────────────────────────────
+
+print("\nDetecting active VPN app on phone...")
+active_vpn = detect_active_vpn(adb)
+if active_vpn:
+    print(f"  Detected: {active_vpn.name}  ({active_vpn.package})")
+else:
+    print("  No known VPN detected — defaulting to NordVPN")
+    from vpn_apps import PACKAGE_MAP
+    active_vpn = PACKAGE_MAP.get("com.nordvpn.android")
+
+VPN_PKG  = active_vpn.package
+VPN_NAME = active_vpn.name
+
+# ── Step 4: reconnect loop ───────────────────────────────────────────────────
 
 reconnect_count = 0
 try:
@@ -155,20 +170,20 @@ try:
         reconnect_count += 1
         print(f"\n{'─'*50}")
         print(f"  RECONNECT #{reconnect_count}  |  {datetime.now().strftime('%H:%M:%S')}  |  "
-              f"packets={capture.packet_count}")
+              f"VPN={VPN_NAME}  packets={capture.packet_count}")
 
         # Read pre-reconnect IP
         pre_ip = read_nordvpn_ip()
 
-        # Force-stop NordVPN → disconnect
-        adb("shell", f"am force-stop {NORDVPN_PKG}")
+        # Force-stop VPN app → disconnect
+        adb("shell", f"am force-stop {VPN_PKG}")
         reconnect_time = datetime.now(tz=timezone.utc)
-        print(f"  Stopped NordVPN  (was: {pre_ip or 'unknown'})")
+        print(f"  Stopped {VPN_NAME}  (was: {pre_ip or 'unknown'})")
         time.sleep(2)
 
-        # Relaunch NordVPN → auto-reconnects
-        adb("shell", f"monkey -p {NORDVPN_PKG} -c android.intent.category.LAUNCHER 1")
-        print(f"  Relaunched NordVPN — waiting for new IP...")
+        # Relaunch VPN app → auto-reconnects
+        adb("shell", f"monkey -p {VPN_PKG} -c android.intent.category.LAUNCHER 1")
+        print(f"  Relaunched {VPN_NAME} — waiting for new IP...")
 
         # Poll for new IP (up to 30s)
         new_ip = None
@@ -196,9 +211,10 @@ try:
                 "entry_node":      new_ip,
                 "mobile_local_ip": PHONE_IP,
                 "location":        "India",
-                "protocol":        "NordLynx",
+                "protocol":        "Auto",
                 "confidence":      100,
                 "entry_method":    "ADB_UIAutomator",
+                "vpn_app":         VPN_NAME,
             }
             pair_event.clear()
             try:

@@ -29,13 +29,13 @@ from vpn_detector import VpnDetector
 from pairing_engine import PairingEngine, CorrelatedPair
 from mobile_bridge import MobileBridge
 from csv_exporter import CsvExporter
+from vpn_apps import detect_active_vpn
 
 ADB         = r"C:\AndroidSDK\platform-tools\adb.exe"
 HOTSPOT_NIC = "Local Area Connection* 4"
 PHONE_IP    = "192.168.137.184"
 DESKTOP_IP  = "192.168.137.1"
 PORT        = 5000
-NORDVPN_PKG = "com.nordvpn.android"
 IP_RE       = re.compile(r"\b((?:\d{1,3}\.){3}\d{1,3})\b")
 
 # ─────────────────────────── helpers
@@ -93,11 +93,20 @@ print("\n" + "="*60)
 print("  FORENSIC VPN NODE CORRELATOR — END-TO-END TEST")
 print("="*60)
 
-step(1, "Network check")
+step(1, "Network check + VPN app detection")
 ping = subprocess.run(["ping","-n","2","-w","1000", PHONE_IP], capture_output=True, text=True)
 print(f"  Phone {PHONE_IP}: {'reachable ✓' if 'TTL=' in ping.stdout else 'no response'}")
 print(f"  Hotspot NIC : {HOTSPOT_NIC}")
 print(f"  Desktop IP  : {DESKTOP_IP}:{PORT}")
+
+# Auto-detect active VPN app
+active_vpn = detect_active_vpn(adb)
+if active_vpn:
+    NORDVPN_PKG = active_vpn.package
+    print(f"  VPN App     : {active_vpn.name}  ({NORDVPN_PKG})")
+else:
+    NORDVPN_PKG = "com.nordvpn.android"
+    print(f"  VPN App     : NordVPN (default)")
 
 # ─────────────────────────── STEP 2: start packet capture
 
